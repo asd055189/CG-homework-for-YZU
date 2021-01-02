@@ -16,8 +16,12 @@ Drag slider to move camera.
   <div id="ui">
     <div id="targetAngle"></div>
     <div id="targetHeight"></div>
+    <div id="targetRadius"></div>
     <div id="camhor"></div>
     <div id="camver"></div>
+    <div id="shininess"></div>
+    
+    
   </div>
 </div>
 </body>
@@ -51,6 +55,10 @@ uniform mat4 u_worldViewProjection;
 uniform mat4 u_world;//position of each point
 out vec3 v_normal;
 uniform vec3 u_lightWorldPosition;
+uniform vec3 u_viewWorldPosition;
+out vec3 v_surfaceToView;
+
+
 
 // all shaders have a main function
 void main() {
@@ -62,7 +70,7 @@ void main() {
 
   vec3 surfaceWorldPosition = (u_world * a_position).xyz;
   v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
-
+   v_surfaceToView = u_viewWorldPosition - surfaceWorldPosition;
   v_normal = a_normal;
 }
 `;
@@ -75,12 +83,12 @@ precision highp float;
 in vec2 v_texcoord;
 
 in vec3 v_surfaceToLight;
-
+in vec3 v_surfaceToView;
 // Passed in and varied from the vertex shader.
 in vec3 v_normal;
 
 uniform vec3 u_reverseLightDirection;
-
+uniform float u_shininess;
 
 
 // we need to declare an output for the fragment shader
@@ -91,11 +99,19 @@ out vec4 outColor;
 void main() {
    vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
   vec3 normal = normalize(v_normal);
+
+
   float light = dot(normal, surfaceToLightDirection);
+  vec3 surfaceToViewDirection = normalize(v_surfaceToView);
 
-
+  vec3 halfVector = normalize(surfaceToLightDirection + surfaceToViewDirection);
+  float specular = 0.0;
+  if (light > 0.0) {
+    specular = pow(dot(normal, halfVector), u_shininess);
+  };
   outColor = texture(u_texture, v_texcoord);
  outColor.rgb *= light;
+ outColor.rgb += specular;
 }
 `;
 
@@ -134,8 +150,9 @@ function main() {
       gl.getUniformLocation(program, "u_reverseLightDirection");
   var lightWorldPositionLocation =
       gl.getUniformLocation(program, "u_lightWorldPosition");
-
-
+var viewWorldPositionLocation =
+    gl.getUniformLocation(program, "u_viewWorldPosition");
+var shininessLocation = gl.getUniformLocation(program, "u_shininess");
 
   // Create a buffer
   var positionBuffer = gl.createBuffer();
@@ -234,6 +251,7 @@ var normalBuffer = gl.createBuffer();
   var camhor= degToRad(60);
   var camver=degToRad(30);
   var fRotationRadians = 0;
+  var shininess=128;
   // Asynchronously load an image
   var image = new Image();
   image.src = "./resources/uv-grid.png";
@@ -247,9 +265,20 @@ var normalBuffer = gl.createBuffer();
   // Setup a ui.
   webglLessonsUI.setupSlider("#targetAngle", {value: radToDeg(targetAngleRadians), slide: updateTargetAngle, min: -360, max: 360});
   webglLessonsUI.setupSlider("#targetHeight", {value: target[1], slide: updateTargetHeight, min: 50, max: 300});
+  webglLessonsUI.setupSlider("#targetRadius", {value: targetRadius, slide: updateTargetRadius, min: 30, max: 300});
   webglLessonsUI.setupSlider("#camhor", {value: radToDeg(camhor), slide: updatecamhor, min: 0, max: 360});
   webglLessonsUI.setupSlider("#camver", {value: radToDeg(camver), slide: updatecamver, min: 0, max: 85});
-
+  webglLessonsUI.setupSlider("#shininess", {value: shininess, slide: updateshininess, min: 1, max: 300});
+  function updateshininess(event,ui) {
+    shininess=ui.value;
+    drawScene();
+  }
+  function updateTargetRadius(event,ui){
+    targetRadius=ui.value
+    target[0] = Math.sin(targetAngleRadians) * targetRadius;
+    target[2] = Math.cos(targetAngleRadians) * targetRadius;
+    drawScene();
+  }
   function updatecamhor(event,ui){
    camhor=degToRad(ui.value);
     drawScene();
@@ -322,7 +351,7 @@ var normalBuffer = gl.createBuffer();
     // create a viewProjection matrix. This will both apply perspective
     // AND move the world so that the camera is effectively the origin
     var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
-
+    gl.uniform3fv(viewWorldPositionLocation, cameraPosition);
 
 
 
@@ -334,7 +363,7 @@ var normalBuffer = gl.createBuffer();
     //gl.uniform4fv(colorLocation, [0.2, 1, 0.2, 1]); // green
     // set the light direction.
     gl.uniform3fv(reverseLightDirectionLocation, m4.normalize([0, 200, 300]));
-
+    gl.uniform1f(shininessLocation, shininess);
 
 
 
@@ -741,30 +770,24 @@ function setTexcoords(gl) {
         0,0,
         0,0,
         0,0,
-
         0,0,
         0,0,
         0,0,
         0,0,
         0,0,
         0,0,
-
         0, 0,
         0, 1,
         1, 0,
         0, 1,
         1, 1,
         1, 0,
-
         0, 0,
         1, 0,
         0, 1,
-        
-
         0, 1,
         1, 0,
-        1, 1,
-        
+        1, 1,        
         0,0,
         0,0,
         0,0,
