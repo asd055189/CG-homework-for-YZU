@@ -1,1 +1,0 @@
-# CG-homework-for-YZU
